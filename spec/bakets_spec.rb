@@ -48,9 +48,6 @@ RSpec.describe Bakets do
         expect(obj1).to_not equal(obj2)
         expect(obj1).to_not equal(obj3)
         expect(obj2).to_not equal(obj3)
-
-# Add post_construct
-# Only add before_bucket_destruction to unique objects...
       end
     end
   end
@@ -241,8 +238,8 @@ RSpec.describe Bakets do
 
             test_classes do
               module Test
-                class StringName
-                  bakets post_initialize: {name: 'do_something_after_init'}
+                class SymbolName
+                  bakets post_initialize: {name: :do_something_after_init}
 
                   attr_reader :post_initialize_was_called, :do_something_after_init_was_called
 
@@ -258,7 +255,7 @@ RSpec.describe Bakets do
             end
 
             it 'method identified by symbol :do_something_after_init gets called instead of :post_initialize:' do
-              obj = StringName.new
+              obj = SymbolName.new
 
               expect(obj.post_initialize_was_called).to be nil
               expect(obj.do_something_after_init_was_called).to be true
@@ -288,10 +285,113 @@ RSpec.describe Bakets do
             end
           end
         end
+
+        describe 'option shortcuts' do
+
+          describe 'post_initialize: true/false' do
+
+            test_classes do
+              module Test
+                class EnabledTrueShortcut
+                  bakets post_initialize: true
+
+                  attr_reader :post_initialize_was_called
+
+                  def post_initialize
+                    @post_initialize_was_called = true
+                  end
+                end
+              end
+            end
+
+            it "'post_initialize: true' equals 'post_initialize.enable: true'" do
+              obj = EnabledTrueShortcut.new
+
+              expect(obj.post_initialize_was_called).to be true
+            end
+
+            test_classes do
+              module Test
+                class EnabledFalseShortcut
+                  bakets post_initialize: false
+
+                  attr_reader :post_initialize_was_called
+
+                  def post_initialize
+                    @post_initialize_was_called = true
+                  end
+                end
+              end
+            end
+
+            it "'post_initialize: false' equals 'post_initialize.enable: false'" do
+              obj = EnabledFalseShortcut.new
+
+              expect(obj.post_initialize_was_called).to be nil
+            end
+          end
+
+          describe 'post_initialize: String/Symbol' do
+
+            test_classes do
+              module Test
+                class NameStringShortcut
+                  bakets post_initialize: 'do_something_after_init'
+
+                  attr_reader :post_initialize_was_called, :do_something_after_init_was_called
+
+                  def post_initialize
+                    @post_initialize_was_called = true
+                  end
+
+                  def do_something_after_init
+                    @do_something_after_init_was_called = true
+                  end
+                end
+              end
+            end
+
+            it "'post_initialize: String' equals 'post_initialize.name: String'" do
+              obj = NameStringShortcut.new
+
+              expect(obj.post_initialize_was_called).to be nil
+              expect(obj.do_something_after_init_was_called).to be true
+            end
+
+            test_classes do
+              module Test
+                class NameSymbolShortcut
+                  bakets post_initialize: :do_something_after_init
+
+                  attr_reader :post_initialize_was_called, :do_something_after_init_was_called
+
+                  def post_initialize
+                    @post_initialize_was_called = true
+                  end
+
+                  def do_something_after_init
+                    @do_something_after_init_was_called = true
+                  end
+                end
+              end
+            end
+
+            it "'post_initialize: Symbol' equals 'post_initialize.name: Symbol'" do
+              obj = NameSymbolShortcut.new
+
+              expect(obj.post_initialize_was_called).to be nil
+              expect(obj.do_something_after_init_was_called).to be true
+            end
+          end
+        end
       end
     end
 
-    #by default it should only be called with own class definitions (or thrid party classes that use bakets with class reopening?)
-    # test shortcuts for configuration (post_initialize = post_initialize.name; post_initialize = post_initialize.enabled...)
+    # Only add before_bucket_destruction to unique objects...
+
+    # by default it should only be called with own class definitions (or thrid party classes that use bakets with class reopening?)
+    #   This means that 'bakets' called within a class definition is not the same as ClassName.bakets?
+    #   I would say configured namespaces have a priority/different behavior for default values (such as post_initialize.enabled).
+    #   By default use/detect top/root namespace? (e.g. using Module.nested...)
   end
 end

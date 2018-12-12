@@ -4,3 +4,5 @@ AllCops:
   TargetRubyVersion: 2.5
 Metrics/LineLength:
   Max: 120
+Style/EmptyCaseCondition:
+  Enabled: false
