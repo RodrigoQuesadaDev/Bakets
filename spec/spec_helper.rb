@@ -1,7 +1,9 @@
 require "bundler/setup"
 require "bakets"
-require "testing/common/classes/class_refinements"
 require "testing/testing_infrastructure_setup"
+
+#Setup bakets
+Bakets.setup root_modules: [Test, Test2, Test3]
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

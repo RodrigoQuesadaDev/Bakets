@@ -10,18 +10,22 @@ using Bakets::Internal::Common::CoreTypesRefinements
 module Bakets
 
   class BucketConfig
-    DEFAULT_POST_INITIALIZE_CONFIG = {
+    DEFAULT_OWN_POST_INITIALIZE_CONFIG = {
         enabled: true,
         name: :post_initialize
     }.freeze
+    DEFAULT_THIRD_PARTY_POST_INITIALIZE_CONFIG = DEFAULT_OWN_POST_INITIALIZE_CONFIG.deep_merge(
+        enabled: false
+    ).freeze
 
     attr_reader :unique, :post_initialize
 
-    def initialize(unique: false, post_initialize: {})
+    def initialize(klass, unique: false, post_initialize: {})
       post_initialize = process_post_initialize_shortcuts post_initialize
+      default_config = Bakets._third_party_class?(klass) ? DEFAULT_THIRD_PARTY_POST_INITIALIZE_CONFIG : DEFAULT_OWN_POST_INITIALIZE_CONFIG
 
       @unique = unique
-      @post_initialize = OpenStruct.new(DEFAULT_POST_INITIALIZE_CONFIG.deep_merge(post_initialize)).freeze
+      @post_initialize = OpenStruct.new(default_config.deep_merge(post_initialize)).freeze
 
       raise ArgumentError, 'post_initialize.name should not be an empty String' if @post_initialize.name.empty?
     end

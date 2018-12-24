@@ -1,21 +1,39 @@
 require 'bakets/version'
 
+require 'bakets/internal/common/classes/class_refinements'
 require 'bakets/internal/common/classes/class_metaprogramming_utils'
+require 'bakets/bakets_exception'
 require 'bakets/bucket'
 require 'bakets/bucket_config'
 require 'bakets/bucket_config_manager'
 
+using Bakets::Internal::Common::ClassRefinements
+
 module Bakets
   class << self
-    attr_reader :default_root_bucket
+    attr_reader :_setup_config, :_default_root_bucket
   end
 
-  @default_root_bucket = Bucket.new
+  @_setup_config = nil
+  @_default_root_bucket = Bucket.new
+
+  class << self
+
+    def setup(**attrs)
+      raise BaketsException, 'Setup should be performed a single time.' if @_setup_config
+
+      @_setup_config = SetupConfig.new(**attrs)
+    end
+
+    def _third_party_class?(klass)
+      !@_setup_config.root_modules.include? klass.root_module
+    end
+  end
 
   module ClassExtensions
 
     def new(*args)
-      root = Bakets.default_root_bucket
+      root = Bakets._default_root_bucket
       instance = root[self]
       if instance.nil?
         instance = super
@@ -33,9 +51,26 @@ module Bakets
     end
 
     def bakets(**attrs)
-      raise 'This method should only be called within the context of a class.' unless is_a? Class
+      raise BaketsException, 'You need to setup Bakets first.' unless Bakets._setup_config
+      raise 'This method should only be called with a class as receiver.' unless is_a? Class
 
-      Bakets.default_root_bucket.add_class self, BucketConfig.new(**attrs)
+      Bakets._default_root_bucket.add_class self, BucketConfig.new(self, **attrs)
+    end
+  end
+
+  class SetupConfig
+    attr_reader :root_modules
+
+    def initialize(root_modules:)
+      root_modules = [root_modules] unless root_modules.is_a? Array
+
+      @root_modules = root_modules.map { |it|
+        case it
+        when Module then it
+        when Symbol, String then Object.const_get it
+        else raise BaketsException, "Each root module defined using 'root-modules' cannot only be of type Module, Symbol, or String."
+        end
+      }
     end
   end
 end
