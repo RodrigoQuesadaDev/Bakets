@@ -20,21 +20,27 @@ end
 module Bakets
   module Testing
     module InfrastructureSetup
+
       class << self
         attr_reader :test_modules
       end
 
       @test_modules = [Test, Test2, Test3, ThirdParty, ThirdParty2, ThirdParty3]
 
+      module Flags
+        ALLOW_NON_TEST_CLASSES = Internal::Common::FiberLocal::FiberLocalFlag.new
+        TEST_CLASSES_WAS_CALLED = Internal::Common::FiberLocal::FiberLocalFlag.new
+      end
+
       module ClassExtensionOverrides
 
         def bakets(**attrs)
           test_modules = InfrastructureSetup.test_modules
-          unless Thread.current[:bakets_allow_nont_test_classes]
+          unless Flags::ALLOW_NON_TEST_CLASSES.value
             unless test_modules.include? parent_module
               raise "Classes that use Bakets should be defined within one of the testing modules '#{test_modules}'."
             end
-            unless Thread.current[:bakets_test_classes_was_called]
+            unless Flags::TEST_CLASSES_WAS_CALLED.value
               raise "Classes that use Bakets should be defined using the 'test_classes' function."
             end
           end
@@ -52,7 +58,7 @@ module Bakets
 
             constants_created = {}
             before(:context) do
-              ClassMethods.set_fiber_flag :bakets_test_classes_was_called
+              Flags::TEST_CLASSES_WAS_CALLED.set
               constants_before = {}
 
               test_modules.each do |test_module|
@@ -75,29 +81,12 @@ module Bakets
               end
             end
           ensure
-            ClassMethods.remove_fiber_variables :bakets_test_classes_was_called
+            Flags::TEST_CLASSES_WAS_CALLED.unset
           end
-
-          #region Utils
-          def self.set_fiber_variable symbol, value
-            Thread.current[symbol] = value
-          end
-
-          def self.set_fiber_flag symbol
-            set_fiber_variable symbol, true
-          end
-
-          def self.remove_fiber_variables(*symbols)
-            symbols.each { |it| Thread.current[it] = nil }
-          end
-          #endregion
         end
 
-        def allow_non_test_classes
-          ClassMethods.set_fiber_flag :bakets_allow_nont_test_classes
-          yield
-        ensure
-          ClassMethods.remove_fiber_variables :bakets_allow_nont_test_classes
+        def allowing_non_test_classes
+          Flags::ALLOW_NON_TEST_CLASSES.setting { yield }
         end
 
         def simulate_no_setup
@@ -124,14 +113,15 @@ module Bakets
   end
 
   def self.remove_config_for classes
-    @_default_root_bucket.remove_config_for classes
+    #TODO fix this!!! (take @_configured_classes into account? Don't need to take other bucketes into account, right?)
+    _buckets_manager.default_root_bucket.remove_config_for classes
   end
 
-  class Bucket
+  module Bucket
     def remove_config_for classes
       classes.each do |it|
-        @classes_config.delete it
-        @instances.delete it
+        self.class._bucket_classes_config.delete it
+        @_bucket_instances.delete it
       end
     end
   end

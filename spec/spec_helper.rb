@@ -1,6 +1,12 @@
+require 'test/unit'
 require "bundler/setup"
 require "bakets"
+require "testing/rspec/rspec_extensions"
+require "testing/proc/around_block_refinements"
+require "testing/assertions/assertions"
 require "testing/testing_infrastructure_setup"
+
+include Test::Unit::Assertions
 
 #Setup bakets
 Bakets.setup root_modules: [Test, Test2, Test3]

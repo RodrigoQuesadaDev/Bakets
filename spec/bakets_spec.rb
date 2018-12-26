@@ -1,6 +1,16 @@
 # frozen_string_literal: true
 
+require 'bakets/internal/common/proc/around_block'
+require 'bakets/internal/common/method/method_refinements'
+require 'weakref'
+
+using Bakets::Testing::Assertions
+using Bakets::Testing::AroundBlockRefinements
+using Bakets::Internal::Common::Methods::MethodRefinements
+
 RSpec.describe Bakets do
+
+  AroundBlock = Bakets::Internal::Common::Procs::AroundBlock
 
   it 'has a version number' do
     expect(Bakets::VERSION).not_to be nil
@@ -32,48 +42,422 @@ RSpec.describe Bakets do
       end
     end
 
-    describe 'Bucket configuration' do
+    describe 'Bucket' do
 
-      describe 'unique: true' do
+      def assert_new_objects_are_the_same(obj_class)
+        obj1 = obj_class.new
+        obj2 = obj_class.new
+        obj3 = obj_class.new
 
-        test_classes do
-          module Test
-            class Unique
-              bakets unique: true
+        [obj1, obj2, obj3].each { |it| expect(it).to be_an_instance_of(obj_class) }
+        assert_objects_are_the_same obj1, obj2, obj3
+      end
+
+      def assert_new_child_objects_are_the_same(parent_class)
+        obj1 = parent_class.new.child
+        obj2 = parent_class.new.child
+        obj3 = parent_class.new.child
+
+        assert_objects_are_the_same obj1, obj2, obj3
+      end
+
+      def assert_object_is_destroyed_after_getting_out_of_bucket_scope(around_scope, obj_class)
+        assert_around_block around_scope
+
+        obj_ref = nil
+        around_scope.run do
+          obj_ref = WeakRef.new(obj_class.new)
+        end
+
+        GC.start
+        expect(obj_ref.weakref_alive?).to be_falsy
+      end
+
+      describe 'configuration' do
+
+        describe 'unique: true' do
+
+          test_classes do
+            module Test
+              class Unique
+                bakets unique: true
+              end
             end
+          end
+
+          it 'new objects are the same' do
+            assert_new_objects_are_the_same Unique
           end
         end
 
-        it 'new objects are the same' do
-          klass = Unique
-          obj1 = klass.new
-          obj2 = klass.new
-          obj3 = klass.new
+        describe 'unique: false' do
 
-          expect(obj1).to equal(obj2)
-          expect(obj2).to equal(obj3)
+          test_classes do
+            module Test
+              class NonUnique
+                bakets unique: false
+              end
+            end
+          end
+
+          it 'new objects are different each time' do
+            klass = NonUnique
+            obj1 = klass.new
+            obj2 = klass.new
+            obj3 = klass.new
+
+            expect(obj1).to_not equal(obj2)
+            expect(obj1).to_not equal(obj3)
+            expect(obj2).to_not equal(obj3)
+          end
         end
       end
 
-      describe 'unique: false' do
+      describe 'usage' do
 
-        test_classes do
-          module Test
-            class NonUnique
-              bakets unique: false
+        context 'code is passed to it as a block' do
+
+          test_classes do
+            module Test
+              class SampleBucket
+                include Bakets::Bucket
+              end
+              class SampleBucket2
+                include Bakets::Bucket
+              end
+              class SampleBucket3
+                include Bakets::Bucket
+              end
             end
+          end
+
+          def assert_it_runs_a_block(method)
+            something = 123
+            method.call {
+              something = 234
+            }
+            expect(something).to eql 234
+          end
+
+          it 'it runs it at level 1' do
+            assert_it_runs_a_block Bakets.method(:root_bucket)
+            assert_it_runs_a_block Bakets.method(:bucket).curry_with_block.call(SampleBucket)
+          end
+
+          it 'it runs it at level 2' do
+            assert_it_runs_a_block(proc do |&action|
+              Bakets.bucket(SampleBucket2) do
+                Bakets.bucket(SampleBucket3) do
+                  action.call
+                end
+              end
+            end)
+          end
+
+          it 'it runs it at level 3' do
+            assert_it_runs_a_block(proc do |&action|
+              Bakets.bucket(SampleBucket) do
+                Bakets.bucket(SampleBucket2) do
+                  Bakets.bucket(SampleBucket3) do
+                    action.call
+                  end
+                end
+              end
+            end)
+          end
+        end
+      end
+
+      describe 'scoping' do
+
+        describe 'all' do
+
+          test_classes do
+            module Test
+              class SampleBucket
+                include Bakets::Bucket
+              end
+              class SampleBucket2
+                include Bakets::Bucket
+              end
+              class SampleBucket3
+                include Bakets::Bucket
+              end
+            end
+          end
+
+          def assert_for_all_that
+            yield Bakets.method(:root_bucket)
+            yield proc { |*args, &block| Bakets.bucket(SampleBucket, *args, &block) }
+          end
+
+          describe 'objects are scoped to a specific bucket' do
+
+            test_classes do
+              module Test
+                class BelongsToSample
+                  bakets bucket: SampleBucket
+                end
+              end
+            end
+
+            it 'executing ::new fails when not called within the scope of a configured bucket' do
+              expect { BelongsToSample.new }.to raise_error BaketsException
+              expect { Bakets.bucket(SampleBucket2) { BelongsToSample.new } }.to raise_error BaketsException
+            end
+
+            test_classes do
+              module Test
+                class RootUnique
+                  bakets unique: true
+                end
+                class SampleUnique
+                  bakets unique: true, bucket: SampleBucket
+                end
+                class SampleUnique3
+                  bakets unique: true, bucket: SampleBucket3
+                end
+              end
+            end
+
+            macros do
+              def it_scopes_a_unique_obj(
+                  level, get_obj_class, get_bucket_klass, around_scope = Bakets::Internal::Common::Procs::AroundBlock.unscoped_block
+              )
+                assert_around_block around_scope
+
+                it "scopes a unique object #{level}" do
+
+                  around_scope.run do
+                    assert_new_objects_are_the_same(get_obj_class.call)
+                  end
+
+                  assert_object_is_destroyed_after_getting_out_of_bucket_scope(around_scope, get_obj_class.call) unless around_scope.is_unscoped_block?
+                end
+              end
+            end
+
+            it_scopes_a_unique_obj(
+                'at default root level',
+                -> { RootUnique },
+                nil
+            )
+
+            it_scopes_a_unique_obj(
+                'at scoped default root level',
+                -> { RootUnique },
+                nil,
+                around_block do |&assertions|
+                  Bakets.root_bucket { assertions.call }
+                end
+            )
+
+            it_scopes_a_unique_obj(
+                'at level 1',
+                -> { SampleUnique },
+                -> { SampleBucket },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) { assertions.call }
+                end
+            )
+
+            it_scopes_a_unique_obj(
+                'at level 3',
+                -> { SampleUnique3 },
+                -> { SampleBucket3 },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) {
+                    Bakets.bucket(SampleBucket2) {
+                      Bakets.bucket(SampleBucket3) {
+                        assertions.call
+                      }
+                    }
+                  }
+                end
+            )
+
+            test_classes do
+              module Test
+                class UniqueParent
+                  attr_reader :child
+
+                  def initialize
+                    @child = UniqueChildOfUniqueParent
+                  end
+                end
+                class UniqueChildOfUniqueParent
+                  bakets unique: true, bucket: SampleBucket3
+                end
+              end
+            end
+
+            macros do
+              def it_scopes_a_unique_obj_that_is_child_of(
+                  parent_description, parent_obj_class, get_bucket_klass, around_scope
+              )
+                assert_around_block around_scope
+
+                it "scopes a unique object that's child of #{parent_description}" do
+                  around_scope.run do
+                    assert_new_child_objects_are_the_same(parent_obj_class.call)
+                  end
+
+                  #TODO assert 'objects get destroyed when the bucket is destroyed'
+                end
+              end
+            end
+
+            it_scopes_a_unique_obj_that_is_child_of(
+                'another unique object',
+                -> { UniqueParent },
+                -> { SampleBucket3 },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) {
+                    Bakets.bucket(SampleBucket2) {
+                      Bakets.bucket(SampleBucket3) {
+                        assertions.call
+                      }
+                    }
+                  }
+                end
+            )
+
+            xit "scopes a unique object that's child of a non-unique object" do
+            end
+
+            xit 'calling ::new for a unique object within the same bucket scope but in a different iteration will yield a different instance' do
+            end
+
+            describe 'calling ::new for a unique object within different configured bucket scopes will yield different instances for the same class' do
+
+              xit 'non-nested call' do
+
+              end
+
+              xit 'nested call' do
+
+              end
+            end
+          end
+
+          xit 'children objects belong to the same bucket as the parent by default' do
+
           end
         end
 
-        it 'new objects are different each time' do
-          klass = NonUnique
-          obj1 = klass.new
-          obj2 = klass.new
-          obj3 = klass.new
+        describe 'root' do
 
-          expect(obj1).to_not equal(obj2)
-          expect(obj1).to_not equal(obj3)
-          expect(obj2).to_not equal(obj3)
+          group do
+            macros do
+              def it_fails_when_a_root_bucket_has_already_been_defined_within_the_scope(
+                  specific_context, &around_action
+              )
+                it "fails_when_a_root_bucket_has_already_been_defined_within_the_scope #{specific_context}" do
+                  expect {
+                    around_action.call {
+
+                      Bakets.root_bucket {
+                        puts 'something'
+                      }
+                    }
+                  }.to raise_error BaketsException
+                end
+              end
+            end
+
+            test_classes do
+              module Test
+                class SampleBucket
+                  include Bakets::Bucket
+                end
+              end
+            end
+
+            it_fails_when_a_root_bucket_has_already_been_defined_within_the_scope(
+                'immediately after defining the root bucket'
+            ) do |&action|
+              Bakets.root_bucket { action.call }
+            end
+
+            it_fails_when_a_root_bucket_has_already_been_defined_within_the_scope(
+                'inside a nested normal bucket'
+            ) do |&action|
+              Bakets.root_bucket {
+                Bakets.bucket(SampleBucket) {
+
+                  action.call
+                }
+              }
+            end
+          end
+
+          context 'an object belonging to it has already been created' do
+
+            xit 'issues a warning when mode:warning or no mode is specified' do
+
+            end
+
+            xit 'it fails using mode:strict' do
+
+            end
+
+            xit 'does nothing when mode:ignore' do
+
+            end
+          end
+
+          describe "objects that don't specify a bucket get mixed into the root bucket" do
+
+            xit 'using a single bucket' do
+
+            end
+          end
+
+          xit "allows for reusing after it's been destroyed" do
+
+          end
+
+          describe "allows for different buckets during the application's lifetime" do
+
+            xit "objects that don't specify a bucket are shared across different root buckets" do
+
+            end
+
+            xit "objects from specific buckets don't get mixed with objects from different ones" do
+
+            end
+          end
+
+          describe 'destruction' do
+
+            #TODO idea: use GC.destroy and check weak/soft reference :)
+
+            describe 'using #bucket' do
+
+              # default
+              # explicit using root:true
+            end
+
+            describe 'using #root_bucket' do
+
+            end
+
+            describe 'using #destroy' do
+
+              xit 'clears unique objects' do
+
+              end
+            end
+          end
+
+          describe 'default root bucket' do
+
+            xit "a default root bucket is used when the user doesn't specify any" do
+
+            end
+
+            #TODO think about Bakets.bucket/Bakets.root_bucket with no arguments?
+          end
         end
       end
     end
@@ -192,7 +576,7 @@ RSpec.describe Bakets do
             it "post_initialize doesn't get called when 'enabled: false'" do
               obj = Disabled.new
 
-              expect(obj.post_initialize_was_called).to be nil
+              expect(obj.post_initialize_was_called).to be_falsy
             end
 
             test_classes do
@@ -228,12 +612,12 @@ RSpec.describe Bakets do
             end
 
             it "default value is 'enabled: false' for third-party classes" do
-              allow_non_test_classes {
+              allowing_non_test_classes {
                 klass = ThirdParty::DefaultThirdParty
                 klass.bakets
                 obj = klass.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
               }
             end
           end
@@ -277,7 +661,7 @@ RSpec.describe Bakets do
               it "method named 'do_something_after_init' gets called instead of 'post_initialize'" do
                 obj = StringName.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
                 expect(obj.do_something_after_init_was_called).to be true
               end
             end
@@ -305,7 +689,7 @@ RSpec.describe Bakets do
               it 'method identified by symbol :do_something_after_init gets called instead of :post_initialize:' do
                 obj = SymbolName.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
                 expect(obj.do_something_after_init_was_called).to be true
               end
             end
@@ -375,7 +759,7 @@ RSpec.describe Bakets do
               it "'post_initialize: false' equals 'post_initialize.enable: false'" do
                 obj = EnabledFalseShortcut.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
               end
             end
 
@@ -402,7 +786,7 @@ RSpec.describe Bakets do
               it "'post_initialize: String' equals 'post_initialize.name: String'" do
                 obj = NameStringShortcut.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
                 expect(obj.do_something_after_init_was_called).to be true
               end
 
@@ -427,7 +811,7 @@ RSpec.describe Bakets do
               it "'post_initialize: Symbol' equals 'post_initialize.name: Symbol'" do
                 obj = NameSymbolShortcut.new
 
-                expect(obj.post_initialize_was_called).to be nil
+                expect(obj.post_initialize_was_called).to be_falsy
                 expect(obj.do_something_after_init_was_called).to be true
               end
             end
@@ -438,9 +822,8 @@ RSpec.describe Bakets do
       # Only add before_bucket_destruction to unique objects...
 
       # by default it should only be called with own class definitions (or thrid party classes that use bakets with class reopening?)
-      #   This means that 'bakets' called within a class definition is not the same as ClassName.bakets?
-      #   I would say configured namespaces have a priority/different behavior for default values (such as post_initialize.enabled).
-      #   By default use/detect top/root namespace? (e.g. using Module.nested...)
+      #   This means that 'bakets' called within a class definition is not the same as ClassName.bakets? NO, remove this
+      #   I would say configured namespaces have a priority/different behavior for default values (such as post_initialize.enabled): NO, remove this
     end
   end
 
@@ -562,3 +945,8 @@ RSpec.describe Bakets do
     end
   end
 end
+
+#TODO
+# buckets should not be destroyed if pending thread still within its scope?
+# multiple instances of buckets instead of single one? (think concurrency)
+# manage buckets manually (therefore, allow to call Bakets.bucket(bucket))

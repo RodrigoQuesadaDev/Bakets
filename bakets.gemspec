@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = %q{Bakets is not a DI framework.}
   spec.description   = %q{Bakets is not a dependency injection framework. Cool? Cool.}
-  spec.homepage      = "https://github.com/RodrigoQuesadaDev/bakets"
+  spec.homepage      = "https://github.com/RodrigoQuesadaDev/Bakets-Ruby"
   spec.license       = "MIT"
 
   # Prevent pushing this gem to RubyGems.org. To allow pushes either set the 'allowed_push_host'
@@ -20,8 +20,8 @@ Gem::Specification.new do |spec|
     spec.metadata["allowed_push_host"] = "TODO: Set to 'http://mygemserver.com'"
 
     spec.metadata["homepage_uri"] = spec.homepage
-    spec.metadata["source_code_uri"] = "https://github.com/RodrigoQuesadaDev/bakets"
-    spec.metadata["changelog_uri"] = "https://github.com/RodrigoQuesadaDev/bakets/blob/master/CHANGELOG.md"
+    spec.metadata["source_code_uri"] = "https://github.com/RodrigoQuesadaDev/Bakets-Ruby"
+    spec.metadata["changelog_uri"] = "https://github.com/RodrigoQuesadaDev/Bakets-Ruby/blob/master/CHANGELOG.md"
   else
     raise "RubyGems 2.0 or newer is required to protect against " \
       "public gem pushes."
@@ -40,4 +40,7 @@ Gem::Specification.new do |spec|
   spec.add_development_dependency "rake", "~> 10.0"
   spec.add_development_dependency "rspec", "~> 3.0"
   spec.add_development_dependency "rubocop", "~> 0.60.0"
+  spec.add_development_dependency 'debase', '~> 0.2.2'
+  spec.add_development_dependency 'ruby-debug-ide', '>= 0.7.0.beta'
+  spec.add_development_dependency 'test-unit', '~> 3.2', '>= 3.2.9'
 end
