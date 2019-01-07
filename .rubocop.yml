@@ -6,3 +6,5 @@ Metrics/LineLength:
   Max: 120
 Style/EmptyCaseCondition:
   Enabled: false
+Layout/FirstParameterIndentation:
+  Enabled: false

@@ -43,17 +43,16 @@ module Bakets
         end
       end
 
-      def scoping_root(bucket_class)
+      def scoping_root(bucket_class, &block)
         raise BaketsException, 'scoped_buckets_stack.size must be 1' unless _scoped_buckets_stack.size == 1
 
         if bucket_class
           scoping(bucket_class, &block)
         else
-          yield
+          block.call
         end
       ensure
-        # no need for _bucket_class_or_default???
-        _scoped_buckets_stack[0] = self.class._new_bucket_for(DEFAULT_ROOT_BUCKET_CLASS)
+        destroy_root
       end
 
       def scoping(bucket_class)
@@ -61,6 +60,10 @@ module Bakets
         yield
       ensure
         _scoped_buckets_stack.pop
+      end
+
+      def destroy_root
+        _scoped_buckets_stack[0] = self.class._new_bucket_for(DEFAULT_ROOT_BUCKET_CLASS)
       end
 
       private

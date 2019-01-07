@@ -37,6 +37,8 @@ module Bakets
     end
 
     def bucket(bucket_class = nil, root: false, &block)
+      raise BaketsException, "A bucket class must be specified when root:#{root}." if !root && !bucket_class
+
       if root
         @_buckets_manager.scoping_root(bucket_class, &block)
       else
@@ -44,7 +46,6 @@ module Bakets
       end
     end
 
-    #TODO check if this method should delegate to ::bucket
     def root_bucket(bucket_class = nil, &block)
       raise BaketsException, 'The root bucket should only be specified once within a given scope.' if @_root_bucket_specified
 
@@ -55,6 +56,10 @@ module Bakets
       ensure
         @_root_bucket_specified = false
       end
+    end
+
+    def destroy_root
+      @_buckets_manager.destroy_root
     end
   end
 

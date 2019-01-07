@@ -147,9 +147,7 @@ RSpec.describe Bakets do
           it 'it runs it at level 2' do
             assert_it_runs_a_block(proc do |&action|
               Bakets.bucket(SampleBucket2) do
-                Bakets.bucket(SampleBucket3) do
-                  action.call
-                end
+                Bakets.bucket(SampleBucket3, &action)
               end
             end)
           end
@@ -158,9 +156,7 @@ RSpec.describe Bakets do
             assert_it_runs_a_block(proc do |&action|
               Bakets.bucket(SampleBucket) do
                 Bakets.bucket(SampleBucket2) do
-                  Bakets.bucket(SampleBucket3) do
-                    action.call
-                  end
+                  Bakets.bucket(SampleBucket3, &action)
                 end
               end
             end)
@@ -169,6 +165,23 @@ RSpec.describe Bakets do
       end
 
       describe 'scoping' do
+
+        macros do
+          def it_scopes_a_unique_obj(
+              specific_context, get_obj_class, around_scope = Bakets::Internal::Common::Procs::AroundBlock.unscoped_block
+          )
+            assert_around_block around_scope
+
+            it "scopes a unique object #{specific_context}" do
+
+              around_scope.run do
+                assert_new_objects_are_the_same(get_obj_class.call)
+              end
+
+              assert_object_is_destroyed_after_getting_out_of_bucket_scope(around_scope, get_obj_class.call) unless around_scope.is_unscoped_block?
+            end
+          end
+        end
 
         describe 'all' do
 
@@ -186,12 +199,7 @@ RSpec.describe Bakets do
             end
           end
 
-          def assert_for_all_that
-            yield Bakets.method(:root_bucket)
-            yield proc { |*args, &block| Bakets.bucket(SampleBucket, *args, &block) }
-          end
-
-          describe 'objects are scoped to a specific bucket' do
+          describe 'objects can be scoped to a specific bucket' do
 
             test_classes do
               module Test
@@ -220,66 +228,58 @@ RSpec.describe Bakets do
               end
             end
 
-            macros do
-              def it_scopes_a_unique_obj(
-                  level, get_obj_class, get_bucket_klass, around_scope = Bakets::Internal::Common::Procs::AroundBlock.unscoped_block
-              )
-                assert_around_block around_scope
-
-                it "scopes a unique object #{level}" do
-
-                  around_scope.run do
-                    assert_new_objects_are_the_same(get_obj_class.call)
-                  end
-
-                  assert_object_is_destroyed_after_getting_out_of_bucket_scope(around_scope, get_obj_class.call) unless around_scope.is_unscoped_block?
-                end
-              end
-            end
-
             it_scopes_a_unique_obj(
                 'at default root level',
-                -> { RootUnique },
-                nil
+                -> { RootUnique }
             )
 
             it_scopes_a_unique_obj(
                 'at scoped default root level',
                 -> { RootUnique },
-                nil,
-                around_block do |&assertions|
-                  Bakets.root_bucket { assertions.call }
-                end
+                around_block(&Bakets.method(:root_bucket))
             )
 
             it_scopes_a_unique_obj(
                 'at level 1',
                 -> { SampleUnique },
-                -> { SampleBucket },
                 around_block do |&assertions|
-                  Bakets.bucket(SampleBucket) { assertions.call }
+                  Bakets.bucket(SampleBucket, &assertions)
                 end
             )
 
             it_scopes_a_unique_obj(
                 'at level 3',
                 -> { SampleUnique3 },
-                -> { SampleBucket3 },
                 around_block do |&assertions|
                   Bakets.bucket(SampleBucket) {
                     Bakets.bucket(SampleBucket2) {
-                      Bakets.bucket(SampleBucket3) {
-                        assertions.call
-                      }
+                      Bakets.bucket(SampleBucket3, &assertions)
                     }
                   }
                 end
             )
 
+            macros do
+              def it_scopes_a_unique_obj_that_is_child_of(
+                  parent_description, get_parent_obj_class, around_scope
+              )
+                assert_around_block around_scope
+
+                it "scopes a unique object that's child of #{parent_description}" do
+                  around_scope.run do
+                    assert_new_child_objects_are_the_same(get_parent_obj_class.call)
+                  end
+
+                  assert_object_is_destroyed_after_getting_out_of_bucket_scope(around_scope, get_parent_obj_class.call)
+                end
+              end
+            end
+
             test_classes do
               module Test
                 class UniqueParent
                   attr_reader :child
+                  bakets unique: true, bucket: SampleBucket2
 
                   def initialize
                     @child = UniqueChildOfUniqueParent
@@ -291,57 +291,107 @@ RSpec.describe Bakets do
               end
             end
 
-            macros do
-              def it_scopes_a_unique_obj_that_is_child_of(
-                  parent_description, parent_obj_class, get_bucket_klass, around_scope
-              )
-                assert_around_block around_scope
-
-                it "scopes a unique object that's child of #{parent_description}" do
-                  around_scope.run do
-                    assert_new_child_objects_are_the_same(parent_obj_class.call)
-                  end
-
-                  #TODO assert 'objects get destroyed when the bucket is destroyed'
-                end
-              end
-            end
-
             it_scopes_a_unique_obj_that_is_child_of(
                 'another unique object',
                 -> { UniqueParent },
-                -> { SampleBucket3 },
                 around_block do |&assertions|
                   Bakets.bucket(SampleBucket) {
                     Bakets.bucket(SampleBucket2) {
-                      Bakets.bucket(SampleBucket3) {
-                        assertions.call
-                      }
+                      Bakets.bucket(SampleBucket3, &assertions)
                     }
                   }
                 end
             )
 
-            xit "scopes a unique object that's child of a non-unique object" do
+            test_classes do
+              module Test
+                class NonUniqueParent
+                  attr_reader :child
+
+                  def initialize
+                    @child = UniqueChildOfNonUniqueParent
+                  end
+                end
+                class UniqueChildOfNonUniqueParent
+                  bakets unique: true, bucket: SampleBucket3
+                end
+              end
             end
 
-            xit 'calling ::new for a unique object within the same bucket scope but in a different iteration will yield a different instance' do
-            end
+            it_scopes_a_unique_obj_that_is_child_of(
+                'a non-unique object',
+                -> { NonUniqueParent },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) {
+                    Bakets.bucket(SampleBucket2) {
+                      Bakets.bucket(SampleBucket3, &assertions)
+                    }
+                  }
+                end
+            )
 
-            describe 'calling ::new for a unique object within different configured bucket scopes will yield different instances for the same class' do
+            it 'calling ::new for a unique object within the same bucket scope but in a different iteration will yield a different instance' do
+              obj1 = Bakets.bucket(SampleBucket) { SampleUnique.new }
+              obj2 = Bakets.bucket(SampleBucket) { SampleUnique.new }
 
-              xit 'non-nested call' do
-
-              end
-
-              xit 'nested call' do
-
-              end
+              expect(obj1).to_not equal(obj2)
             end
           end
 
-          xit 'children objects belong to the same bucket as the parent by default' do
+          describe 'objects can be scoped to multiple buckets' do
 
+            test_classes do
+              module Test
+                class UniqueWithMultipleBuckets
+                  bakets unique: true, bucket: SampleBucket2
+                  bakets unique: true, bucket: SampleBucket3
+                end
+              end
+            end
+
+            it_scopes_a_unique_obj(
+                'that belongs to multiple buckets - bucket 1',
+                -> { UniqueWithMultipleBuckets },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) {
+                    Bakets.bucket(SampleBucket2, &assertions)
+                  }
+                end
+            )
+
+            it_scopes_a_unique_obj(
+                'that belongs to multiple buckets - bucket 2',
+                -> { UniqueWithMultipleBuckets },
+                around_block do |&assertions|
+                  Bakets.bucket(SampleBucket) {
+                    Bakets.bucket(SampleBucket3, &assertions)
+                  }
+                end
+            )
+
+            describe 'calling ::new for a unique object within different configured bucket scopes will yield different instances for the same class' do
+
+              it 'non-nested call' do
+                obj1 = Bakets.bucket(SampleBucket2) { UniqueWithMultipleBuckets.new }
+                obj2 = Bakets.bucket(SampleBucket3) { UniqueWithMultipleBuckets.new }
+
+                expect(obj1).to_not equal(obj2)
+              end
+
+              it 'nested call' do
+                obj1 = obj2 = nil
+                Bakets.bucket(SampleBucket2) {
+                  obj1 = UniqueWithMultipleBuckets.new
+                  Bakets.bucket(SampleBucket3) {
+                    obj2 = UniqueWithMultipleBuckets.new
+                  }
+                }
+
+                expect(obj1).to_not be_nil
+                expect(obj2).to_not be_nil
+                expect(obj1).to_not equal(obj2)
+              end
+            end
           end
         end
 
@@ -374,19 +424,15 @@ RSpec.describe Bakets do
             end
 
             it_fails_when_a_root_bucket_has_already_been_defined_within_the_scope(
-                'immediately after defining the root bucket'
-            ) do |&action|
-              Bakets.root_bucket { action.call }
-            end
+                'immediately after defining the root bucket',
+                &Bakets.method(:root_bucket)
+            )
 
             it_fails_when_a_root_bucket_has_already_been_defined_within_the_scope(
                 'inside a nested normal bucket'
             ) do |&action|
               Bakets.root_bucket {
-                Bakets.bucket(SampleBucket) {
-
-                  action.call
-                }
+                Bakets.bucket(SampleBucket, &action)
               }
             end
           end
@@ -419,44 +465,100 @@ RSpec.describe Bakets do
 
           describe "allows for different buckets during the application's lifetime" do
 
-            xit "objects that don't specify a bucket are shared across different root buckets" do
+            it "objects from specific buckets don't get mixed with objects from different ones" do
 
-            end
-
-            xit "objects from specific buckets don't get mixed with objects from different ones" do
-
+              fail
             end
           end
 
           describe 'destruction' do
 
-            #TODO idea: use GC.destroy and check weak/soft reference :)
+            test_classes do
+              module Test
+                class SampleBucket
+                  include Bakets::Bucket
+                end
 
-            describe 'using #bucket' do
+                class DefaultRootSample
+                  bakets unique: true
+                end
+                class OwnRootSample
+                  bakets unique: true, bucket: SampleBucket
+                end
+              end
+            end
 
-              # default
-              # explicit using root:true
+            it 'using #bucket with root:true option' do
+              assert_object_is_destroyed_after_getting_out_of_bucket_scope(
+                  around_block do |&assertions|
+                    Bakets.bucket(root: true, &assertions)
+                  end,
+                  DefaultRootSample
+              )
             end
 
             describe 'using #root_bucket' do
 
+              it 'with default bucket' do
+                assert_object_is_destroyed_after_getting_out_of_bucket_scope(
+                    around_block(&Bakets.method(:root_bucket)),
+                    DefaultRootSample
+                )
+              end
+
+              it 'with own bucket' do
+                assert_object_is_destroyed_after_getting_out_of_bucket_scope(
+                    around_block do |&assertions|
+                      Bakets.root_bucket(SampleBucket, &assertions)
+                    end,
+                    OwnRootSample
+                )
+              end
+
+              it 'with own bucket and object configured with default bucket' do
+                assert_object_is_destroyed_after_getting_out_of_bucket_scope(
+                    around_block do |&assertions|
+                      Bakets.root_bucket(SampleBucket, &assertions)
+                    end,
+                    DefaultRootSample
+                )
+              end
             end
 
-            describe 'using #destroy' do
-
-              xit 'clears unique objects' do
-
-              end
+            it 'using #destroy_root' do
+              assert_object_is_destroyed_after_getting_out_of_bucket_scope(
+                  around_block do |&assertions|
+                    assertions.call
+                    Bakets.destroy_root
+                  end,
+                  DefaultRootSample
+              )
             end
           end
 
           describe 'default root bucket' do
 
-            xit "a default root bucket is used when the user doesn't specify any" do
-
+            test_classes do
+              module Test
+                class DefaultRootSample
+                  bakets unique: true
+                end
+              end
             end
 
-            #TODO think about Bakets.bucket/Bakets.root_bucket with no arguments?
+            it_scopes_a_unique_obj(
+                'using #root with no arguments',
+                -> { DefaultRootSample },
+                around_block(&Bakets.method(:root_bucket))
+            )
+
+            it_scopes_a_unique_obj(
+                'using #bucket with root:true and no arguments',
+                -> { DefaultRootSample },
+                around_block do |&assertions|
+                  Bakets.bucket(root: true, &assertions)
+                end
+            )
           end
         end
       end
@@ -950,3 +1052,4 @@ end
 # buckets should not be destroyed if pending thread still within its scope?
 # multiple instances of buckets instead of single one? (think concurrency)
 # manage buckets manually (therefore, allow to call Bakets.bucket(bucket))
+# allow to specify multiple buckets simultaneously 'bakets unique: true, buckets: [SampleBucket1, SampleBucket1]'
