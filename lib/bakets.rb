@@ -60,6 +60,7 @@ module Bakets
 
     def destroy_root
       @_buckets_manager.destroy_root
+      nil
     end
   end
 
@@ -87,9 +88,9 @@ module Bakets
   end
 
   class SetupConfig
-    attr_reader :root_modules
+    attr_reader :root_modules, :before_root_scope_creation
 
-    def initialize(root_modules:)
+    def initialize(root_modules:, before_root_scope_creation: :warning)
       root_modules = [root_modules] unless root_modules.is_a? Array
 
       @root_modules = root_modules.map { |it|
@@ -99,6 +100,7 @@ module Bakets
         else raise BaketsException, "Each root module defined using 'root-modules' cannot only be of type Module, Symbol, or String."
         end
       }
+      @before_root_scope_creation = before_root_scope_creation
     end
   end
 end

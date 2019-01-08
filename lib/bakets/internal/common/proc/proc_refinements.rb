@@ -22,7 +22,8 @@ module Bakets
                 def curried_proc.call(*args, **attrs, &block)
                   @__rodrigodev_curry_args.push(*args)
                   if block
-                    super(*@__rodrigodev_curry_args, **attrs, &block)
+                    if attrs.empty? then super(*@__rodrigodev_curry_args, &block)
+                    else super(*@__rodrigodev_curry_args, **attrs, &block) end
                   else
                     self
                   end

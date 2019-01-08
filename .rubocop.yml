@@ -8,3 +8,9 @@ Style/EmptyCaseCondition:
   Enabled: false
 Layout/FirstParameterIndentation:
   Enabled: false
+Layout/IndentArray:
+  Enabled: false
+Layout/MultilineBlockLayout:
+    Enabled: false
+Layoout/SpaceInsideHashLiteralBraces:
+  EnforcedStyle: no_space

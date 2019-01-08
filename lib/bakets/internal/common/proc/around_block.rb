@@ -12,14 +12,16 @@ module Bakets
           end
 
           def run(&nested)
-            was_call = false
-
-            @around.call do
-              nested.call
-
-              was_call = true
+            was_called_or_error = false
+            result = @around.call do
+              nested.call.tap { was_called_or_error = true }
+            rescue
+              was_called_or_error = true
+              raise
             end
-            assert_true was_call, 'The block passed to the AroundBlock should be called.'
+
+            assert_true was_called_or_error, 'The block passed to the AroundBlock should be called.'
+            result
           end
         end
       end

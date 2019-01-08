@@ -22,3 +22,6 @@ RSpec.configure do |config|
     c.syntax = :expect
   end
 end
+
+RSpec::Matchers.define_negated_matcher :not_output, :output
+RSpec::Matchers.define_negated_matcher :not_raise_error, :raise_error

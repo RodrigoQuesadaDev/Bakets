@@ -22,10 +22,23 @@ module Bakets
     module InfrastructureSetup
 
       class << self
-        attr_reader :test_modules
+        attr_reader :managed_test_modules
       end
 
-      @test_modules = [Test, Test2, Test3, ThirdParty, ThirdParty2, ThirdParty3]
+      @managed_test_modules = [Test, Test2, Test3, ThirdParty, ThirdParty2, ThirdParty3].freeze
+      @unmanaged_test_modules = []
+
+      def self.unmanaged_test_modules
+        @unmanaged_test_modules.clone.freeze
+      end
+
+      def self.all_test_modules
+        (@managed_test_modules + @unmanaged_test_modules).freeze
+      end
+
+      def self.add_unmanaged_test_module(mod)
+        @unmanaged_test_modules << mod
+      end
 
       module Flags
         ALLOW_NON_TEST_CLASSES = Internal::Common::FiberLocal::FiberLocalFlag.new
@@ -35,12 +48,13 @@ module Bakets
       module ClassExtensionOverrides
 
         def bakets(**attrs)
-          test_modules = InfrastructureSetup.test_modules
+          all_test_modules = InfrastructureSetup.all_test_modules
+          unmanaged_test_modules = InfrastructureSetup.unmanaged_test_modules
           unless Flags::ALLOW_NON_TEST_CLASSES.value
-            unless test_modules.include? parent_module
-              raise "Classes that use Bakets should be defined within one of the testing modules '#{test_modules}'."
+            unless all_test_modules.include? parent_module
+              raise "Classes that use Bakets should be defined within one of the testing modules '#{all_test_modules}'."
             end
-            unless Flags::TEST_CLASSES_WAS_CALLED.value
+            unless Flags::TEST_CLASSES_WAS_CALLED.value || unmanaged_test_modules.include?(parent_module)
               raise "Classes that use Bakets should be defined using the 'test_classes' function."
             end
           end
@@ -54,7 +68,7 @@ module Bakets
         module ClassMethods
 
           def test_classes(&block)
-            test_modules = InfrastructureSetup.test_modules
+            test_modules = InfrastructureSetup.managed_test_modules
 
             constants_created = {}
             before(:context) do
@@ -128,7 +142,7 @@ module Bakets
 end
 
 #region Setup
-Bakets::Testing::InfrastructureSetup.test_modules.each do |test_module|
+Bakets::Testing::InfrastructureSetup.managed_test_modules.each do |test_module|
   include test_module
 end
 Class.prepend Bakets::Testing::InfrastructureSetup::ClassExtensionOverrides

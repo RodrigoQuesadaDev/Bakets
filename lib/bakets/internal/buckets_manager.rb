@@ -29,14 +29,14 @@ module Bakets
       end
 
       def instance_for(klass, &new_instance)
-        return new_instance.yield unless @_configured_classes[klass]
+        return new_instance.call unless @_configured_classes[klass]
 
         bucket = @reverse_scoped_buckets_stack.find { |bucket| bucket._config_for klass }
         raise BaketsException, ':new must be called within the scope of a configured bucket.' unless bucket
 
         bucket[klass] ||= begin
 
-          new_instance.yield.tap do |instance|
+          new_instance.call.tap do |instance|
             config = bucket._config_for(klass)
             instance.send_if_possible config.post_initialize.name if config&.post_initialize&.enabled
           end
@@ -45,6 +45,21 @@ module Bakets
 
       def scoping_root(bucket_class, &block)
         raise BaketsException, 'scoped_buckets_stack.size must be 1' unless _scoped_buckets_stack.size == 1
+
+        unless default_root_bucket.empty?
+          warning_message = 'some unique objects have already been created'
+
+          before_root_scope_creation_mode = Bakets._setup_config.before_root_scope_creation
+          case before_root_scope_creation_mode
+          when :warning
+            warn warning_message
+          when :strict
+            raise BaketsException, warning_message
+          when :ignore
+          else
+            raise BaketsException, "unsupported before_root_scope_creation:#{before_root_scope_creation_mode} mode."
+          end
+        end
 
         if bucket_class
           scoping(bucket_class, &block)

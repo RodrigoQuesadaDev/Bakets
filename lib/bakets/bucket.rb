@@ -23,6 +23,10 @@ module Bakets
       @_bucket_instances[klass] = instance if self.class._bucket_classes_config[klass]&.unique
     end
 
+    def empty?
+      @_bucket_instances.empty?
+    end
+
     module ClassMethods
       attr_reader :_bucket_classes_config
 
