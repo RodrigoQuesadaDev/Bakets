@@ -90,7 +90,7 @@ module Bakets
               test_modules.each do |test_module|
                 unless constants_created[test_module].empty?
                   Bakets.remove_config_for(constants_created[test_module].map { |it| test_module.const_get it })
-                  constants_created[test_module].each { |it| test_module.send(:remove_const, it) }
+                  constants_created[test_module].each { |it| test_module.__send__(:remove_const, it) }
                 end
               end
             end
@@ -112,6 +112,39 @@ module Bakets
 
         def self.included(klass)
           klass.extend ClassMethods
+        end
+      end
+
+      module ObjectSpaceOverrides
+
+        module ClassMethods
+
+          def define_finalizer(obj, aProc = proc())
+            if obj.is_a?(Bucket)
+              aProc = ClassMethods.wrap_proc aProc
+            end
+
+            super obj, aProc
+          end
+
+          def self.wrap_proc(a_proc)
+            proc {
+              a_proc.call
+              a_proc = nil # allow garbage collection to take place immediately afterwards for this proc
+            }
+          end
+        end
+
+        def self.prepended(klass)
+          klass.singleton_class.prepend ClassMethods
+        end
+      end
+
+      module GlobalFunctions
+
+        def garbage_collect_bakets
+          GC.start # collect normal objects
+          GC.start # collect finalizer objects
         end
       end
     end
@@ -147,4 +180,6 @@ Bakets::Testing::InfrastructureSetup.managed_test_modules.each do |test_module|
 end
 Class.prepend Bakets::Testing::InfrastructureSetup::ClassExtensionOverrides
 RSpec::Core::ExampleGroup.include Bakets::Testing::InfrastructureSetup::RSpecExampleGroupOverrides
+ObjectSpace.prepend Bakets::Testing::InfrastructureSetup::ObjectSpaceOverrides
+include Bakets::Testing::InfrastructureSetup::GlobalFunctions
 #endregion

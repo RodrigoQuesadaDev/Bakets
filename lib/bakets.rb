@@ -69,6 +69,7 @@ module Bakets
     CREATING_OBJECT = Bakets::Internal::Common::FiberLocal::FiberLocalFlag.new
 
     def new(*args)
+      #TODO consider overriding it only for classes that use bakets?
       return super if CREATING_OBJECT.value
 
       CREATING_OBJECT.setting do

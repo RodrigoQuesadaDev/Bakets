@@ -13,6 +13,7 @@ module Bakets
       flattr_accessor :_scoped_buckets_stack, default: proc { self.class._scoped_buckets_stack_initial_value }
 
       DEFAULT_ROOT_BUCKET_CLASS = DefaultRootBucket
+      private_constant :DEFAULT_ROOT_BUCKET_CLASS
 
       def initialize
         @_configured_classes = {}
@@ -38,7 +39,15 @@ module Bakets
 
           new_instance.call.tap do |instance|
             config = bucket._config_for(klass)
+
             instance.send_if_possible config.post_initialize.name if config&.post_initialize&.enabled
+
+            if config&.on_bucket_destruction&.enabled
+              on_bucket_destruction_name = config.on_bucket_destruction.name
+              if instance.respond_to?(config.on_bucket_destruction.name)
+                ObjectSpace.define_finalizer bucket, self.class._create_bucket_finalizer(instance, on_bucket_destruction_name)
+              end
+            end
           end
         end
       end
@@ -93,6 +102,10 @@ module Bakets
 
       def self._new_bucket_for(bucket_klass)
         _bucket_class_or_default(bucket_klass).new
+      end
+
+      def self._create_bucket_finalizer(instance, on_bucket_destruction_name)
+        proc { instance.__send__(on_bucket_destruction_name) }
       end
     end
   end

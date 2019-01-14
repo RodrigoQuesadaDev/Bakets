@@ -10,7 +10,7 @@ module Bakets
 
           def send_if_possible(*args)
             if respond_to?(args.first)
-              send(*args)
+              __send__(*args)
             end
           end
         end

@@ -70,21 +70,36 @@ module Bakets
         class SampleBucket
           include Bakets::Bucket
         end
+        class SampleBucket2
+          include Bakets::Bucket
+        end
         class SampleBucket3
           include Bakets::Bucket
         end
 
-        class DefaultRootUnique
-          bakets unique: true
+        class Base
+          attr_reader :events
+
+          def initialize
+            @events = []
+          end
+
+          def on_bucket_destruction
+            @events << :on_bucket_destruction
+          end
         end
-        class RootUnique
-          bakets unique: true, bucket: RootBucket
+
+        class DefaultRootUnique < Base
+          bakets unique: true, on_bucket_destruction: true
         end
-        class Unique
-          bakets unique: true, bucket: SampleBucket
+        class RootUnique < Base
+          bakets unique: true, bucket: RootBucket, on_bucket_destruction: true
         end
-        class Unique3
-          bakets unique: true, bucket: SampleBucket3
+        class Unique < Base
+          bakets unique: true, bucket: SampleBucket, on_bucket_destruction: true
+        end
+        class Unique3 < Base
+          bakets unique: true, bucket: SampleBucket3, on_bucket_destruction: true
         end
       end
       include Samples
