@@ -160,15 +160,14 @@ module Bakets
   end
 
   def self.remove_config_for classes
-    #TODO fix this!!! (take @_configured_classes into account? Don't need to take other bucketes into account, right?)
-    _buckets_manager.default_root_bucket.remove_config_for classes
+    _buckets_manager.remove_config_for classes
   end
 
-  module Bucket
-    def remove_config_for classes
-      classes.each do |it|
-        self.class._bucket_classes_config.delete it
-        @_bucket_instances.delete it
+  module Internal
+    class BucketsManager
+      def remove_config_for classes
+        classes.each { |it| @_configured_classes.delete it }
+        destroy_root
       end
     end
   end

@@ -20,10 +20,6 @@ module Bakets
         @reverse_scoped_buckets_stack = Common::EnumerableReverseView.new(&method(:_scoped_buckets_stack))
       end
 
-      def default_root_bucket
-        _scoped_buckets_stack.first
-      end
-
       def add_class_to_bucket(klass, config, bucket_class)
         self.class._bucket_class_or_default(bucket_class)._add_class klass, config
         @_configured_classes[klass] = true
@@ -55,7 +51,7 @@ module Bakets
       def scoping_root(bucket_class, &block)
         raise BaketsException, 'scoped_buckets_stack.size must be 1' unless _scoped_buckets_stack.size == 1
 
-        unless default_root_bucket.empty?
+        unless _default_root_bucket.empty?
           warning_message = 'some unique objects have already been created'
 
           before_root_scope_creation_mode = Bakets._setup_config.before_root_scope_creation
@@ -91,6 +87,10 @@ module Bakets
       end
 
       private
+
+      def _default_root_bucket
+        _scoped_buckets_stack.first
+      end
 
       def self._scoped_buckets_stack_initial_value
         [_new_bucket_for(DEFAULT_ROOT_BUCKET_CLASS)]

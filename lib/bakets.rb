@@ -66,10 +66,21 @@ module Bakets
 
   module ClassExtensions
 
+    def bakets(**attrs)
+      raise BaketsException, 'You need to setup Bakets first.' unless Bakets._setup_config
+      raise 'This method should only be called with a class as receiver.' unless is_a? Class
+
+      bucket_class = attrs.delete(:bucket)
+      Bakets._buckets_manager.add_class_to_bucket(self, BucketConfig.new(self, **attrs), bucket_class)
+      singleton_class.include SpecificClassOverrides
+    end
+  end
+
+  module SpecificClassOverrides
+
     CREATING_OBJECT = Bakets::Internal::Common::FiberLocal::FiberLocalFlag.new
 
     def new(*args)
-      #TODO consider overriding it only for classes that use bakets?
       return super if CREATING_OBJECT.value
 
       CREATING_OBJECT.setting do
@@ -77,14 +88,6 @@ module Bakets
           CREATING_OBJECT.unsetting { super }
         end
       end
-    end
-
-    def bakets(**attrs)
-      raise BaketsException, 'You need to setup Bakets first.' unless Bakets._setup_config
-      raise 'This method should only be called with a class as receiver.' unless is_a? Class
-
-      bucket_class = attrs.delete(:bucket)
-      Bakets._buckets_manager.add_class_to_bucket(self, BucketConfig.new(self, **attrs), bucket_class)
     end
   end
 
